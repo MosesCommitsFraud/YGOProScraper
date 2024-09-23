@@ -1,93 +1,49 @@
 import requests
-from bs4 import BeautifulSoup
-import pandas as pd
+import json
 import time
 
-
-# Funktion um ein einzelnes Deck auszulesen
-def scrape_deck(deck_url):
-    deck_response = requests.get(deck_url)
-    deck_soup = BeautifulSoup(deck_response.text, 'html.parser')
-
-    # Deckkarten extrahieren
-    main_deck = deck_soup.find('div', id='main_deck')
-    side_deck = deck_soup.find('div', id='side_deck')
-    extra_deck = deck_soup.find('div', id='extra_deck')
-
-    def extract_cards(deck_div):
-        if deck_div:
-            return [card.text.strip() for card in deck_div.find_all('span', class_='card-name')]
-        return []
-
-    main_deck_cards = extract_cards(main_deck)
-    side_deck_cards = extract_cards(side_deck)
-    extra_deck_cards = extract_cards(extra_deck)
-
-    return main_deck_cards, side_deck_cards, extra_deck_cards
+# Basis-URL der API
+base_url = 'https://db.ygoprodeck.com/api/v7/cardinfo.php'
 
 
-# Funktion um alle Decks von einer Seite zu extrahieren
-def scrape_decks_from_page(page_url):
-    response = requests.get(page_url)
-    soup = BeautifulSoup(response.text, 'html.parser')
+# Funktion zum Abrufen der Daten
+def fetch_all_yugioh_cards():
+    try:
+        # Anfrage an die API senden
+        response = requests.get(base_url)
+        response.raise_for_status()  # Überprüfen, ob die Anfrage erfolgreich war
+        data = response.json()  # Daten im JSON-Format laden
 
-    # Deck-Container identifizieren
-    deck_articles = soup.find_all('div', class_='p-2 deck_article-card-container')
-
-    all_decks = []
-
-    # Für jeden Deck-Container die URL finden und Deck-Karten extrahieren
-    for deck_article in deck_articles:
-        deck_link = deck_article.find('a')['href']
-        deck_url = f"https://ygoprodeck.com{deck_link}"
-
-        deck_name = deck_article.find('h5').text.strip()
-        views = deck_article.find('span', class_='views').text.strip()
-
-        print(f"Scraping deck: {deck_name}, Views: {views}")
-
-        main_deck, side_deck, extra_deck = scrape_deck(deck_url)
-
-        all_decks.append({
-            'deck_name': deck_name,
-            'views': views,
-            'main_deck': main_deck,
-            'side_deck': side_deck,
-            'extra_deck': extra_deck
-        })
-
-        time.sleep(1)  # Kurze Pause, um den Server nicht zu überlasten
-
-    return all_decks
+        # Rückgabe der Karteninformationen
+        return data['data']
+    except requests.exceptions.HTTPError as http_err:
+        print(f"HTTP error occurred: {http_err}")
+    except Exception as err:
+        print(f"An error occurred: {err}")
+    return []
 
 
-# Funktion um mehrere Seiten zu durchlaufen
-def scrape_all_decks(base_url, num_pages):
-    all_decks = []
-
-    for page_num in range(num_pages):
-        offset = page_num * 20  # 20 Decks pro Seite
-        page_url = f"{base_url}&offset={offset}"
-
-        print(f"Scraping page {page_num + 1}: {page_url}")
-        page_decks = scrape_decks_from_page(page_url)
-        all_decks.extend(page_decks)
-
-        time.sleep(2)  # Pause zwischen den Seiten
-
-    return all_decks
+# Funktion zum Speichern der Daten als JSON-Datei
+def save_to_json(card_data, file_name):
+    # Speichern der Daten im JSON-Format
+    with open(file_name, 'w', encoding='utf-8') as f:
+        json.dump(card_data, f, ensure_ascii=False, indent=4)
+    print(f"Data saved to {file_name}")
 
 
-# Start des Scraping-Prozesses
-base_url = "https://ygoprodeck.com/deck-search/?sort=Deck%20Views"
-num_pages = 5  # Anzahl der Seiten, die gescraped werden sollen (anpassbar)
+# Hauptfunktion zum Ausführen des Skripts
+def main():
+    print("Fetching Yu-Gi-Oh! card data...")
+    card_data = fetch_all_yugioh_cards()
 
-all_decks = scrape_all_decks(base_url, num_pages)
+    if card_data:
+        print(f"Fetched {len(card_data)} cards.")
 
-# Daten in ein Pandas DataFrame umwandeln
-df = pd.DataFrame(all_decks)
+        # Speichern der Daten in einer JSON-Datei
+        save_to_json(card_data, 'yugioh_cards.json')
+    else:
+        print("No card data fetched.")
 
-# Daten in eine CSV-Datei exportieren
-df.to_csv('ygopro_decks.csv', index=False)
 
-print("Scraping abgeschlossen. Decks gespeichert in 'ygopro_decks.csv'.")
+if __name__ == "__main__":
+    main()
